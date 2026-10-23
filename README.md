@@ -4,7 +4,19 @@ A single Go binary that checks changed Go functions for cyclomatic complexity, C
 
 See [docs/design.md](docs/design.md) for the design goals, [docs/STATUS.md](docs/STATUS.md) for features, test fixtures and known limits, and [docs/parity.md](docs/parity.md) and [docs/benchmarks.md](docs/benchmarks.md) for how it compares with crapper and dryer.
 
-The complexity and similarity rules are ported from Uncle Bob's 0BSD-licensed [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer). Only the approach is ported; no code is copied from crap4go.
+The complexity and similarity rules are ported from Uncle Bob's 0BSD-licensed [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer); see [Acknowledgements](#acknowledgements).
+
+## Why GoDryCrap
+
+We wanted a pre-commit hook and a CI gate that keep new and changed Go functions simple and tested, and that flag copy-paste duplication before it lands. The bar is warn at 9 and fail at 10, for both cyclomatic complexity and CRAP. That follows the CRAP target of 10 that Uncle Bob [says he uses nowadays](https://x.com/unclebobmartin/status/2108946115169030596), and it is much stricter than the original CRAP cut-off of 30.
+
+That gate had to meet a few requirements:
+
+- **Fast enough for every commit.** It runs on each developer's machine with nothing but Go and git, and it has to finish well under a couple of seconds on a large monorepo, or people stop running it.
+- **Only what changed.** It scores only the functions a change touches, so an existing backlog of complex code never blocks an unrelated commit. `-ratchet` (off by default) lets a function that was already over the line, and did not get worse, warn instead of fail.
+- **Reuse coverage, never rerun tests.** `crap` reads the coverage profile a CI test job already writes. A profile that is missing or does not match the source is an error, never a silent 0%.
+
+Uncle Bob's [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer) had the right ideas: CRAP scores per function, and structural duplicate detection that ignores names and literals. They are Python tools that cover six languages, and by default crapper regenerates coverage on each run. GoDryCrap brings their rules for Go into a single standard-library Go binary built for that hook loop. On a private Go monorepo of 39,770 functions, `complexity` over the whole tree takes 1.48 s, against 32.3 s for `crapper --no-coverage`. On real staged diffs a hook run takes 39–94 ms for `complexity` and 0.3–1.1 s for `dupes`, and `crap` scores a coverage profile in 6–27 ms. See [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Install
 
@@ -149,6 +161,37 @@ Duplicates:
 - **Fingerprints are 64-bit hashes.** Each fingerprint is a structural hash of a subtree instead of its printed form. Equal subtrees hash equally, so the sets have the same sizes and overlaps, barring a 64-bit collision.
 - **Comparisons stay within a package.** A changed function is compared with the functions in its own package; dryer's `--changed` compares changed files with each other only. In path mode GoDryCrap compares functions per package (directory); dryer compares every form across all the files it was given, so cross-package pairs dryer reports are not reported here.
 
+## Acknowledgements
+
+GoDryCrap would not exist without the work of Robert C. Martin ([Uncle Bob](https://cleancoder.com)).
+
+- **[crapper](https://github.com/unclebob/crapper)** (Python, 0BSD) computes CRAP = CC² × (1 − coverage)³ + CC per function for Clojure, Java, Go, TypeScript, Rust and Python. Its Go rules follow his earlier [crap4go](https://github.com/unclebob/crap4go), and its formula is the one from [crap4clj](https://github.com/unclebob/crap4clj) and [crap4java](https://github.com/unclebob/crap4java).
+- **[dryer](https://github.com/unclebob/dryer)** (Python, 0BSD) finds candidate duplicate code in the same six languages. It scores pairs of functions by the Jaccard similarity of their normalized structural fingerprints. Its Clojure side follows his [dry4clj](https://github.com/unclebob/dry4clj).
+
+He announced both, along with mutator and uml-viewer, [on X on October 10, 2026](https://x.com/unclebobmartin/status/2108914390980342164), and invited people to "use them as templates to build the tools that are customized to your needs. The licenses are all BSD Zero, meaning that there are no strings." GoDryCrap is one of those tools.
+
+**Ported from crapper and dryer (0BSD).** Their rules were reimplemented in Go; no Python code was copied.
+
+- From crapper: Go complexity counting (`src/crapper/languages/golang.py`); function names and namespaces (`import/path` or `import/path.Receiver`); per-function coverage from profile blocks, its rounding, and its longer-source-owns path rule; the skipped directories and `_test.go` files; and its Go test cases, kept as fixtures in `testdata/crapper`.
+- From dryer: form normalization, subtree fingerprints and Jaccard scoring (`astnorm.py`, `shape.py`, `extract.py`, `scan.py`), the tree shape it builds from tree-sitter-go (approximated on go/ast), and its `min-lines` 4 and `min-nodes` 20 defaults.
+
+**New in GoDryCrap.**
+
+- Staged-snapshot reads from the git index, `-diff` ranges, and function identity across moves and renames.
+- Separate warn and fail thresholds, stable exit codes, and `-ratchet`.
+- Strict coverage checks: a missing, malformed or stale profile is an error, checked block for block against the layout cmd/cover would instrument.
+- One merged block per span for `-coverpkg` and sharded profiles.
+- Import-path profile matching, and skipping of generated code.
+- A go/ast normalizer in place of tree-sitter, with 64-bit hashed fingerprints.
+- Duplicate comparison within each package.
+- Markdown, JSON and TSV output.
+
+No code comes from crap4go, which has no license file. [docs/parity.md](docs/parity.md) shows where results match crapper and dryer exactly and where they differ on purpose.
+
+**The CRAP metric** (Change Risk Anti-Patterns) was created by Alberto Savoia and Bob Evans, who launched it in 2007 with the Crap4j Eclipse plug-in and [crap4j.org](http://www.crap4j.org/). Savoia tells the story in [This Code is CRAP](https://testing.googleblog.com/2011/02/this-code-is-crap.html) on the Google Testing Blog, where a score above 30 marks a method as CRAPpy.
+
+**The Go project.** `internal/coverlayout` ports the block rules of Go 1.27's `cmd/cover`, so profiles can be checked against the exact blocks `go test` instruments.
+
 ## License
 
-GoDryCrap is released under the [0BSD license](LICENSE). Its complexity counting and duplicate-detection approach are ported from Uncle Bob's [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer), both 0BSD. The fixtures in `testdata/crapper` are crapper's own Go test cases.
+GoDryCrap is released under the [0BSD license](LICENSE). The parts ported from crapper and dryer, and the fixtures in `testdata/crapper`, come from 0BSD sources; see [Acknowledgements](#acknowledgements).
