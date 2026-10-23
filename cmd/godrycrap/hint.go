@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"runtime"
 	"strings"
 	"unicode/utf8"
@@ -29,14 +30,52 @@ func fail(stderr io.Writer, name string, err error) gate.Status {
 }
 
 // bugHint is the stderr text that asks for an issue. The body holds the
-// version, platform and arguments only, never file contents.
+// version, platform and arguments only, never file contents, and paths in
+// the arguments and the title are cut to their base names.
 func bugHint(name, msg string, args []string) string {
-	title := name + ": " + shortError(msg)
+	title := name + ": " + shortError(stripDirs(msg))
 	body := fmt.Sprintf("godrycrap %s, %s, %s/%s, command: %s",
 		moduleVersion(readBuildInfo()), runtime.Version(), runtime.GOOS, runtime.GOARCH,
-		shellJoin(append([]string{"godrycrap"}, args...)))
+		shellJoin(append([]string{"godrycrap"}, redactArgs(args)...)))
 	return fmt.Sprintf("godrycrap: internal error. Report it: gh issue create -R tfournet/GoDryCrap --title %s --body %s\ngodrycrap: or open %s\n",
 		shellQuote(title), shellQuote(body), issuesURL)
+}
+
+// pathInText matches a path with at least one directory separator.
+var pathInText = regexp.MustCompile(`(?:\b[A-Za-z]:)?[\w.~@+-]*(?:[/\\][\w.~@+-]*)+`)
+
+// stripDirs replaces each path in msg with its base name.
+func stripDirs(msg string) string {
+	return pathInText.ReplaceAllStringFunc(msg, baseName)
+}
+
+// redactArgs keeps flags and the subcommand and cuts every path-like
+// argument or flag value to its base name.
+func redactArgs(args []string) []string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		name, value, isFlag := strings.Cut(a, "=")
+		switch {
+		case isFlag && strings.HasPrefix(name, "-"):
+			out[i] = name + "=" + baseName(value)
+		case strings.HasPrefix(a, "-"):
+			out[i] = a
+		default:
+			out[i] = baseName(a)
+		}
+	}
+	return out
+}
+
+// baseName is the last element of a path that has a directory, or s
+// without trailing separators when it has none. A path of separators only
+// stays as it is.
+func baseName(s string) string {
+	trimmed := strings.TrimRight(s, `/\`)
+	if trimmed == "" {
+		return s
+	}
+	return trimmed[strings.LastIndexAny(trimmed, `/\`)+1:]
 }
 
 // shortError is the first line of msg, cut to 80 characters.

@@ -185,7 +185,7 @@ godrycrap: internal error. Report it: gh issue create -R tfournet/GoDryCrap --ti
 godrycrap: or open https://github.com/tfournet/GoDryCrap/issues
 ```
 
-The body holds only the version, platform and arguments, never file contents. Errors you can fix yourself (a bad flag, a missing, malformed or stale coverage profile, a directory that is not a git repository, a syntax error) print a `godrycrap: hint:` line that says how instead.
+The body holds only the version, platform and arguments, never file contents, and the hint cuts every path in the arguments and the title down to its base name, so no directory structure goes into a public issue. Still read the text before you file it. Errors you can fix yourself (a bad flag, a missing, malformed or stale coverage profile, a directory that is not a git repository, a syntax error) print a `godrycrap: hint:` line that says how instead.
 
 To report a bug, run that command or use the [bug report form](https://github.com/tfournet/GoDryCrap/issues/new?template=bug_report.yml), and include:
 

@@ -13,13 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          # No go.sum (no dependencies), so key the cache on go.mod.
+          cache-dependency-path: go.mod
 
       - name: gofmt
         run: |
@@ -92,4 +94,38 @@ jobs:
         run: |
           status=0
           ./godrycrap dupes -summary -diff "$BASE...HEAD" || status=$?
+          [ "$status" -le 1 ] || exit "$status"
+
+  # Early warning for new Go releases. internal/coverlayout ports Go 1.27's
+  # cmd/cover block rules, so a new Go minor may need the port re-checked
+  # (see docs/STATUS.md). This job never fails the workflow.
+  go-stable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          check-latest: true
+          cache-dependency-path: go.mod
+
+      - name: go version
+        run: go version
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -coverpkg=./... -coverprofile=coverage.out ./...
+
+      # A profile written by this Go must still match the cmd/cover layout
+      # coverlayout computes; a mismatch here means the port needs a look.
+      - name: crap on its own coverage (cmd/cover layout check)
+        run: |
+          go build -o godrycrap ./cmd/godrycrap
+          status=0
+          ./godrycrap crap -coverprofile coverage.out ./cmd ./internal || status=$?
           [ "$status" -le 1 ] || exit "$status"

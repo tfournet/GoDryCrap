@@ -85,7 +85,7 @@ func TestInternalErrorGetsTheBugHint(t *testing.T) {
 	for _, want := range []string{
 		"godrycrap crap: bad header",
 		"godrycrap: internal error. Report it: gh issue create -R tfournet/GoDryCrap --title 'crap: bad header \"x\"' --body 'godrycrap v9.8.7, go",
-		`command: godrycrap crap -coverprofile '\''it'\''\'\'''\''s.out'\'' ./pkg'`,
+		`command: godrycrap crap -coverprofile '\''it'\''\'\'''\''s.out'\'' pkg'`,
 		"godrycrap: or open https://github.com/tfournet/GoDryCrap/issues",
 	} {
 		if !strings.Contains(got, want) {
@@ -104,6 +104,22 @@ func TestPanicIsRecoveredWithTheBugHint(t *testing.T) {
 	if res.status != gate.Error || !strings.Contains(res.stderr, "godrycrap boom: panic: kaboom") ||
 		!strings.Contains(res.stderr, "--title 'boom: panic: kaboom'") || !strings.Contains(res.stderr, "command: godrycrap boom -x'") {
 		t.Errorf("status %v, stderr:\n%s", res.status, res.stderr)
+	}
+}
+
+func TestBugHintStripsDirectories(t *testing.T) {
+	args := []string{"crap", "-coverprofile", "/home/dev/secret-proj/coverage.out", "-C=/srv/repos/acme", "./internal/billing", ".", "-summary", "--", "../x/y.go", "/"}
+	got := strings.Join(redactArgs(args), " ")
+	if want := "crap -coverprofile coverage.out -C=acme billing . -summary -- y.go /"; got != want {
+		t.Errorf("redactArgs = %q, want %q", got, want)
+	}
+	msg := `open /home/dev/secret-proj/c.out: denied; parse internal/billing/tax.go:3:1: bad; git cat-file HEAD:pkg/a.go; C:\work\p\q.go, dir/`
+	if got, want := stripDirs(msg), "open c.out: denied; parse tax.go:3:1: bad; git cat-file HEAD:a.go; q.go, dir"; got != want {
+		t.Errorf("stripDirs = %q, want %q", got, want)
+	}
+	hint := bugHint("crap", "open /home/dev/secret-proj/c.out: denied", args)
+	if strings.Contains(hint, "secret-proj") || strings.Contains(hint, "/srv") || !strings.Contains(hint, "--title 'crap: open c.out: denied'") {
+		t.Errorf("hint leaks directories:\n%s", hint)
 	}
 }
 

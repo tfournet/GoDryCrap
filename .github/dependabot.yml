@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Updates module requirements. Dependabot does not bump the go or
+  # toolchain directives on its own (see docs/STATUS.md).
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
