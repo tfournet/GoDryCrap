@@ -1,0 +1,25 @@
+GoDryCrap
+Copyright (c) 2026 tfournet. Released under the 0BSD license (see LICENSE).
+
+This repository includes or is derived from the third-party material below.
+
+1. Go cmd/cover (BSD-3-Clause)
+   internal/coverlayout/blocks.go, boundary.go, coverlayout.go and visit.go
+   port the coverage block rules of Go 1.27's cmd/cover
+   (src/cmd/cover/cover.go). They are derived from that code, which is
+   Copyright 2009 The Go Authors and is used under the BSD-style license kept
+   in internal/coverlayout/LICENSE-go. Modifications are released under 0BSD.
+   https://go.dev/LICENSE
+
+2. crapper and dryer by Robert C. Martin (0BSD)
+   https://github.com/unclebob/crapper
+   https://github.com/unclebob/dryer
+   Copyright (C) 2026 by Robert C. Martin. GoDryCrap reimplements their
+   complexity, coverage and duplicate-detection rules in Go. No code is copied
+   from them.
+
+3. testdata/crapper fixtures (0BSD)
+   The Go sources in testdata/crapper are crapper's Go test cases from
+   tests/test_go.py, Copyright (C) 2026 by Robert C. Martin, used under 0BSD.
+   testdata/crapper/coverage adds small changes so the cases compile; see
+   testdata/crapper/README.md.

@@ -203,4 +203,4 @@ No code comes from crap4go, which has no license file. [docs/parity.md](docs/par
 
 ## License
 
-GoDryCrap is released under the [0BSD license](LICENSE). The parts ported from crapper and dryer, and the fixtures in `testdata/crapper`, come from 0BSD sources; see [Acknowledgements](#acknowledgements).
+GoDryCrap is released under the [0BSD license](LICENSE). The parts ported from crapper and dryer, and the fixtures in `testdata/crapper`, come from 0BSD sources; see [Acknowledgements](#acknowledgements). `internal/coverlayout` is derived from Go's `cmd/cover` and keeps the Go Authors' BSD-3-Clause notice in [internal/coverlayout/LICENSE-go](internal/coverlayout/LICENSE-go). [NOTICE](NOTICE) lists all third-party material.

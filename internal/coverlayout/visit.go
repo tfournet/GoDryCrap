@@ -1,3 +1,9 @@
+// Derived from Go's cmd/cover (src/cmd/cover/cover.go, Go 1.27).
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by the BSD-style license in
+// LICENSE-go in this directory. Modifications are released under this
+// repository's 0BSD license.
+
 package coverlayout
 
 import (
