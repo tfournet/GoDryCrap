@@ -1,6 +1,6 @@
 # Status
 
-GoDryCrap v1.0.0-rc1.
+GoDryCrap v1.1.0.
 
 ## Features
 
@@ -8,12 +8,14 @@ GoDryCrap v1.0.0-rc1.
 - Warn at 9 and fail at 10. `-ratchet` is off by default.
 - `dupes` is advisory, at a Jaccard threshold of 0.8.
 - Exit codes are 0 ok, 1 warn, 2 fail, 3 error. A missing, empty, malformed or wrong-shard coverage profile is exit 3, never 0%. A stale profile is exit 3 when its block layout differs from the current source: profiles are checked block for block against the layout cmd/cover (Go 1.27) instruments. See Known limits for the one case this does not catch.
+- `godrycrap version` prints the version line, which also starts text and Markdown output; JSON has `version` and `go_version` fields.
+- Errors the user can fix print a `godrycrap: hint:` line; internal errors and panics exit 3 with a ready-made `gh issue create` command.
 - Output is plain text, Markdown (with `-summary` appending to `$GITHUB_STEP_SUMMARY`), JSON or TSV.
 
 ## Quality bar
 
 - Unit tests in every package, plus the fixtures below.
-- Dogfood: every function in GoDryCrap scores under CRAP 9 on its own coverage (`go test -coverpkg=./...`): 201 functions, none at warn or fail (highest CRAP 8.25), with 95.7% statement coverage.
+- Dogfood: every function in GoDryCrap scores under CRAP 9 on its own coverage (`go test -coverpkg=./...`): 217 functions, none at warn or fail (highest CRAP 8.25), with 95.9% statement coverage.
 - `gofmt`, `go vet` and `staticcheck` are clean. go.mod is `go 1.27` with `toolchain go1.27.3`.
 - `.github/workflows/ci.yml` runs all of this on every push and pull request, then runs the three commands on the repo itself and on each pull request's changed functions.
 - Parity with crapper and dryer, and timings, are in [parity.md](parity.md) and [benchmarks.md](benchmarks.md).

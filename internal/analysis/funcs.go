@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/tfournet/GoDryCrap/internal/coverlayout"
+	"github.com/tfournet/GoDryCrap/internal/usererr"
 )
 
 // File is one parsed Go source file and the functions it declares.
@@ -76,7 +77,7 @@ func ParseFile(filePath string, src []byte, mods Modules) (*File, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filePath, src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", filePath, err)
+		return nil, usererr.Wrap(fmt.Errorf("parse %s: %w", filePath, err), "fix the syntax error first (in the staged mode, stage the fix too)")
 	}
 	if ast.IsGenerated(file) {
 		return nil, nil

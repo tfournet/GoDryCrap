@@ -11,12 +11,20 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/tfournet/GoDryCrap/internal/usererr"
 )
 
 // Repo is a git work tree, addressed by its top-level directory.
 type Repo struct {
 	Root string
 }
+
+// Hints for errors the user can fix.
+const (
+	rangeHint = "use -diff BASE..HEAD or BASE...HEAD with commits that exist in this clone (fetch the base branch first, e.g. git fetch origin main)"
+	gitHint   = "run godrycrap inside a git repository (or point -C at one) with git on PATH, or pass files or directories to score them without git"
+)
 
 // Open finds the repository that contains dir.
 func Open(dir string) (*Repo, error) {
@@ -63,11 +71,11 @@ func (r *Repo) ResolveRange(spec string) (base, head string, err error) {
 		var twoDot bool
 		left, right, twoDot = strings.Cut(spec, "..")
 		if !twoDot {
-			return "", "", fmt.Errorf("diff range %q: want BASE..HEAD or BASE...HEAD", spec)
+			return "", "", usererr.Wrap(fmt.Errorf("diff range %q: want BASE..HEAD or BASE...HEAD", spec), rangeHint)
 		}
 	}
 	if left == "" || right == "" {
-		return "", "", fmt.Errorf("diff range %q: both ends are required", spec)
+		return "", "", usererr.Wrap(fmt.Errorf("diff range %q: both ends are required", spec), rangeHint)
 	}
 	if head, err = r.commit(right); err != nil {
 		return "", "", err
@@ -86,7 +94,7 @@ func (r *Repo) ResolveRange(spec string) (base, head string, err error) {
 func (r *Repo) commit(rev string) (string, error) {
 	out, err := run(r.Root, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
 	if err != nil {
-		return "", fmt.Errorf("unknown revision %q", rev)
+		return "", usererr.Wrap(fmt.Errorf("unknown revision %q", rev), rangeHint)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -131,7 +139,7 @@ func (r *Repo) Read(names []string) (map[string][]byte, error) {
 	var input bytes.Buffer
 	for _, name := range names {
 		if strings.ContainsAny(name, "\n\r") {
-			return nil, fmt.Errorf("path contains a newline: %q", name)
+			return nil, usererr.Wrap(fmt.Errorf("path contains a newline: %q", name), "rename the file; paths with newlines are not supported")
 		}
 		input.WriteString(name + "\n")
 	}
@@ -200,9 +208,9 @@ func run(dir string, stdin io.Reader, args ...string) ([]byte, error) {
 			if msg == "" {
 				msg = exit.Error()
 			}
-			return nil, fmt.Errorf("git %s: %s", args[0], msg)
+			return nil, usererr.Wrap(fmt.Errorf("git %s: %s", args[0], msg), gitHint)
 		}
-		return nil, fmt.Errorf("git %s: %w", args[0], err)
+		return nil, usererr.Wrap(fmt.Errorf("git %s: %w", args[0], err), gitHint)
 	}
 	return out, nil
 }

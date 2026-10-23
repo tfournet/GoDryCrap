@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/tfournet/GoDryCrap/internal/analysis"
 	"github.com/tfournet/GoDryCrap/internal/gate"
 	"github.com/tfournet/GoDryCrap/internal/report"
 	"github.com/tfournet/GoDryCrap/internal/snapshot"
+	"github.com/tfournet/GoDryCrap/internal/usererr"
 )
 
 // options are the flags every command takes.
@@ -38,15 +40,19 @@ func parse(fs *flag.FlagSet, o *options, args []string, stderr io.Writer) (done 
 		if errors.Is(err, flag.ErrHelp) {
 			return true, nil
 		}
-		return false, err
+		return false, usererr.Wrap(err, flagHint(fs))
 	}
 	if !report.ValidFormat(o.format) {
-		return false, fmt.Errorf("unknown -format %q (want %s)", o.format, strings.Join(report.Formats, ", "))
+		return false, usererr.Wrap(fmt.Errorf("unknown -format %q (want %s)", o.format, strings.Join(report.Formats, ", ")), flagHint(fs))
 	}
 	if o.diff != "" && len(o.paths) > 0 {
-		return false, errors.New("-diff and paths cannot be combined")
+		return false, usererr.Wrap(errors.New("-diff and paths cannot be combined"), flagHint(fs))
 	}
 	return false, nil
+}
+
+func flagHint(fs *flag.FlagSet) string {
+	return "run 'godrycrap " + fs.Name() + " -h' for its flags"
 }
 
 // interleaved parses flags that come before, between or after paths, and
@@ -100,12 +106,32 @@ func (o *options) load() (*target, error) {
 }
 
 // emit appends the table's Markdown to $GITHUB_STEP_SUMMARY when -summary
-// is set, then writes the table to stdout in the chosen format.
-func (o *options) emit(stdout io.Writer, t report.Table, payload any) error {
+// is set, then writes the table to stdout in the chosen format. Text and
+// Markdown start with the version line, JSON gets version and go_version
+// fields, and TSV stays a plain table.
+func (o *options) emit(stdout io.Writer, t report.Table, payload map[string]any) error {
 	if err := o.appendSummary(t); err != nil {
-		return err
+		return usererr.Wrap(err, "check that $GITHUB_STEP_SUMMARY names a writable file")
 	}
-	return report.Write(stdout, o.format, t, payload)
+	payload["version"] = moduleVersion(readBuildInfo())
+	payload["go_version"] = runtime.Version()
+	err := banner(stdout, o.format)
+	if err == nil {
+		err = report.Write(stdout, o.format, t, payload)
+	}
+	return usererr.Wrap(err, "check that standard output is writable")
+}
+
+// banner writes the version line that starts text and Markdown output.
+func banner(w io.Writer, format string) error {
+	var err error
+	switch format {
+	case "text":
+		_, err = fmt.Fprintln(w, version())
+	case "markdown":
+		_, err = fmt.Fprintf(w, "%s\n\n", version())
+	}
+	return err
 }
 
 func (o *options) appendSummary(t report.Table) error {
@@ -122,11 +148,6 @@ func (o *options) appendSummary(t report.Table) error {
 		return err
 	}
 	return f.Close()
-}
-
-func fail(stderr io.Writer, name string, err error) gate.Status {
-	fmt.Fprintf(stderr, "godrycrap %s: %v\n", name, err)
-	return gate.Error
 }
 
 func counts(statuses []gate.Status) string {

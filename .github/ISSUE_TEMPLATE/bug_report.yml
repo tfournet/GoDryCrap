@@ -1,0 +1,64 @@
+name: Bug report
+description: Something godrycrap did wrong, such as an internal error, a panic, or a wrong score.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Use only a minimal, made-up repro: never paste proprietary code, file contents, paths or coverage profiles from a private project.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `godrycrap version`.
+      placeholder: godrycrap v1.1.0 (go1.27.3)
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: linux/amd64
+  - type: input
+    id: command
+    attributes:
+      label: Command run
+      placeholder: godrycrap crap -coverprofile coverage.out ./pkg
+    validations:
+      required: true
+  - type: dropdown
+    id: exit
+    attributes:
+      label: Exit code
+      options: ["0 (ok)", "1 (warn)", "2 (fail)", "3 (error)", "crashed or hung"]
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened, including the stderr output (with the internal-error hint, if there was one).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal repro
+      description: The smallest made-up Go files (and go.mod, and coverage profile if it matters) plus the commands that show the bug.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-proprietary-code
+    attributes:
+      label: Public repro
+      options:
+        - label: This repro contains no proprietary code
+          required: true

@@ -12,6 +12,7 @@ import (
 	"github.com/tfournet/GoDryCrap/internal/coverage"
 	"github.com/tfournet/GoDryCrap/internal/gate"
 	"github.com/tfournet/GoDryCrap/internal/report"
+	"github.com/tfournet/GoDryCrap/internal/usererr"
 )
 
 type crapRow struct {
@@ -80,7 +81,7 @@ func runCrap(args []string, stdout, stderr io.Writer) gate.Status {
 func (o *crapOptions) score() ([]crapRow, error) {
 	profile, err := coverage.Load(o.profiles)
 	if err != nil {
-		return nil, err
+		return nil, usererr.Wrap(err, regenerateHint)
 	}
 	t, err := o.load()
 	if err != nil {
@@ -89,7 +90,7 @@ func (o *crapOptions) score() ([]crapRow, error) {
 	profile.Bind(t.files)
 	blocks, err := o.fileBlocks(profile, t)
 	if err != nil {
-		return nil, err
+		return nil, profileError(err)
 	}
 	rows := []crapRow{}
 	for _, c := range t.changes {
@@ -165,6 +166,25 @@ func (o *crapOptions) row(c analysis.Change, blocks []coverage.Block) crapRow {
 		row.Before = &before
 	}
 	return row
+}
+
+// Hints for coverage profiles that do not fit the source.
+const (
+	regenerateHint = "write the profile with Go 1.27, e.g. go test -coverprofile=coverage.out ./..., and pass it with -coverprofile coverage.out"
+	staleHint      = "the profile is older than the source or from another Go version: rerun go test -coverprofile=coverage.out ./... with Go 1.27 after your last edit"
+	shardHint      = "pass the profile of the tests that cover these packages (repeat -coverprofile to merge shards), add -profiled-only to skip files it does not cover, or rerun go test -coverprofile=coverage.out ./..."
+)
+
+// profileError marks a profile that does not fit the source as the user's
+// to fix.
+func profileError(err error) error {
+	switch {
+	case errors.Is(err, coverage.ErrMismatch):
+		return usererr.Wrap(err, staleHint)
+	case errors.Is(err, coverage.ErrNotInProfile):
+		return usererr.Wrap(err, shardHint)
+	}
+	return err
 }
 
 func number(v float64) string {

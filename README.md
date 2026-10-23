@@ -105,6 +105,12 @@ Advisory: it always exits 0 unless there is an error. Functions are compared onl
 | `-diff BASE..HEAD` | score a commit range instead of the staged diff |
 | `-C dir` | run git in `dir` |
 
+### Version
+
+`godrycrap version` (or `-version`, `--version`) prints the version line, such as `godrycrap v1.1.0 (go1.27.3)`. A `go install ...@v1.1.0` binary reports its module version; a build from a checkout reports the commit (with `+dirty` for uncommitted changes) or `devel`.
+
+Text and Markdown output start with that line. JSON output has `version` and `go_version` fields instead, and TSV output has no version line, so it stays a plain table. The `-summary` Markdown has no version line.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -169,6 +175,26 @@ Duplicates:
 - **The tree is built from go/ast, not tree-sitter.** The normalizer emits tree-sitter-go node kinds (`statement_list`, `expression_list`, `qualified_type`, `pointer_type`, `generic_type`, `literal_element` and so on) so its trees approximate dryer's. They are not guaranteed identical, so scores can differ slightly from dryer's.
 - **Fingerprints are 64-bit hashes.** Each fingerprint is a structural hash of a subtree instead of its printed form. Equal subtrees hash equally, so the sets have the same sizes and overlaps, barring a 64-bit collision.
 - **Comparisons stay within a package.** A changed function is compared with the functions in its own package; dryer's `--changed` compares changed files with each other only. In path mode GoDryCrap compares functions per package (directory); dryer compares every form across all the files it was given, so cross-package pairs dryer reports are not reported here.
+
+## Reporting bugs
+
+Bug reports from people and coding agents are welcome. When godrycrap hits an internal error or panics, it exits 3 and prints a ready-made command on stderr:
+
+```
+godrycrap: internal error. Report it: gh issue create -R tfournet/GoDryCrap --title '<command>: <error>' --body '<version>, <go version>, <os/arch>, command: <arguments>'
+godrycrap: or open https://github.com/tfournet/GoDryCrap/issues
+```
+
+The body holds only the version, platform and arguments, never file contents. Errors you can fix yourself (a bad flag, a missing, malformed or stale coverage profile, a directory that is not a git repository, a syntax error) print a `godrycrap: hint:` line that says how instead.
+
+To report a bug, run that command or use the [bug report form](https://github.com/tfournet/GoDryCrap/issues/new?template=bug_report.yml), and include:
+
+- the output of `godrycrap version`, and your OS and architecture;
+- the command you ran and its exit code;
+- what you expected and what happened, with the stderr output;
+- a minimal repro: the smallest Go files (and coverage profile, if it matters) that show the bug.
+
+Issues are public, so the repro must be made up. Never paste proprietary code, file contents or coverage profiles from a private project.
 
 ## Acknowledgements
 

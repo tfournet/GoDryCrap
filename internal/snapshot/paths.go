@@ -7,7 +7,11 @@ import (
 	"sort"
 
 	"github.com/tfournet/GoDryCrap/internal/analysis"
+	"github.com/tfournet/GoDryCrap/internal/usererr"
 )
+
+// pathHint is the hint for a path that cannot be read.
+const pathHint = "check that each path exists and is readable"
 
 // LoadPaths parses the Go files named by args, walking directories. Walked
 // directories skip the same names crapper does, plus ent and gen. Named
@@ -117,9 +121,10 @@ func expand(arg string) ([]string, error) {
 	info, err := os.Stat(arg)
 	switch {
 	case err != nil:
-		return nil, err
+		return nil, usererr.Wrap(err, pathHint)
 	case info.IsDir():
-		return walk(arg)
+		files, err := walk(arg)
+		return files, usererr.Wrap(err, pathHint)
 	case analysis.IsGoSource(filepath.Base(arg)):
 		return []string{arg}, nil
 	}
@@ -167,7 +172,7 @@ func (m *moduleFinder) parse(abs, display string) (*analysis.File, error) {
 	}
 	src, err := os.ReadFile(abs)
 	if err != nil {
-		return nil, err
+		return nil, usererr.Wrap(err, pathHint)
 	}
 	file, err := analysis.ParseFile(filepath.ToSlash(abs), src, m.mods)
 	if file == nil || err != nil {
