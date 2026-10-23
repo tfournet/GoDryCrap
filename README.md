@@ -18,6 +18,15 @@ That gate had to meet a few requirements:
 
 Uncle Bob's [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer) had the right ideas: CRAP scores per function, and structural duplicate detection that ignores names and literals. They are Python tools that cover six languages, and by default crapper regenerates coverage on each run. GoDryCrap brings their rules for Go into a single standard-library Go binary built for that hook loop. On a private Go monorepo of 39,770 functions, `complexity` over the whole tree takes 1.48 s, against 32.3 s for `crapper --no-coverage`. On real staged diffs a hook run takes 39–94 ms for `complexity` and 0.3–1.1 s for `dupes`, and `crap` scores a coverage profile in 6–27 ms. See [docs/benchmarks.md](docs/benchmarks.md).
 
+## Why DRY and CRAP matter
+
+- **CRAP.** Complex code with little test coverage is where changes break things. Low complexity and good coverage keep each function easy to read, change and test.
+- **DRY.** When the same logic lives in several places, a fix lands in one copy and the bug lives on in the others. The codebase grows without getting more capable.
+
+Both matter even more with AI coding agents. Agents write code fast. When they see only part of a codebase, they tend to add a near-copy of a helper instead of finding and reusing the one that exists, and to grow long, branching functions. They also work best on small, well-tested functions they can understand in one read, where the tests catch their mistakes. Uncle Bob relies on the same kind of gate for his own agents. He [writes](https://x.com/unclebobmartin/status/2108946115169030596) that "they are all _forced_ to thoroughly cover the code with unit tests. That enforcement comes from the crapper and mutator tools."
+
+A fast, automatic gate on every commit gives agents and people the same immediate, objective feedback, so problems don't wait for a reviewer to catch them later. That is why GoDryCrap runs as a pre-commit hook and scores only what changed.
+
 ## Install
 
 The repo tracks the latest stable Go release (currently `go 1.27` with `toolchain go1.27.3` in go.mod). It uses only the standard library and needs nothing at run time beyond `git`.
