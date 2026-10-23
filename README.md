@@ -1,31 +1,107 @@
 # GoDryCrap
 
-A single Go binary that checks changed Go functions for cyclomatic complexity, CRAP score (from an existing coverage profile) and structural duplication. It is built to run as a fast pre-commit hook and as a CI gate.
+GoDryCrap is a fast Go pre-commit hook and CI gate that checks the functions a change touches for cyclomatic complexity, CRAP score and copy-paste duplication. It keeps each change easy to read and safe to change, for the people and the AI coding agents who work on the code.
 
-See [docs/design.md](docs/design.md) for the design goals, [docs/STATUS.md](docs/STATUS.md) for features, test fixtures and known limits, and [docs/parity.md](docs/parity.md) and [docs/benchmarks.md](docs/benchmarks.md) for how it compares with crapper and dryer.
+A commit that adds a branchy function and a copy-pasted helper:
 
-The complexity and similarity rules are ported from Uncle Bob's 0BSD-licensed [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer); see [Acknowledgements](#acknowledgements).
+```
+$ git commit -m "pricing rules"
+godrycrap v1.1.1 (go1.27.3)
+godrycrap complexity: 3 functions, 1 fail, 0 warn
+status  cc  before  function                            location
+fail    10  1       example.com/shop/price.Discount     price/price.go:4
+ok      3   new     example.com/shop/price.ShippingFee  price/price.go:28
+ok      3   new     example.com/shop/price.ReturnFee    price/price.go:40
+godrycrap v1.1.1 (go1.27.3)
+godrycrap dupes: 1 candidate pairs at or above 0.8 (advisory)
+score   function                            location              similar to                        location
+1.0000  example.com/shop/price.ShippingFee  price/price.go:28-37  example.com/shop/price.ReturnFee  price/price.go:40-49
+```
 
-## Why GoDryCrap
+The commit is blocked until `Discount` is split. The duplicate pair is reported but does not block.
 
-We wanted a pre-commit hook and a CI gate that keep new and changed Go functions simple and tested, and that flag copy-paste duplication before it lands. The bar is warn at 9 and fail at 10, for both cyclomatic complexity and CRAP. That follows the CRAP target of 10 that Uncle Bob [says he uses nowadays](https://x.com/unclebobmartin/status/2108946115169030596), and it is much stricter than the original CRAP cut-off of 30.
+GoDryCrap is one Go binary that uses only the standard library. Its rules come from Uncle Bob's [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer); see [Acknowledgements](#acknowledgements). More detail is in [docs/design.md](docs/design.md), [docs/STATUS.md](docs/STATUS.md) (features, fixtures and known limits), [docs/parity.md](docs/parity.md) and [docs/benchmarks.md](docs/benchmarks.md).
 
-That gate had to meet a few requirements:
+## The three checks
 
-- **Fast enough for every commit.** It runs on each developer's machine with nothing but Go and git, and it has to finish well under a couple of seconds on a large monorepo, or people stop running it.
-- **Only what changed.** It scores only the functions a change touches, so an existing backlog of complex code never blocks an unrelated commit. `-ratchet` (off by default) lets a function that was already over the line, and did not get worse, warn instead of fail.
-- **Reuse coverage, never rerun tests.** `crap` reads the coverage profile a CI test job already writes. A profile that is missing or does not match the source is an error, never a silent 0%.
+Complex code with little test coverage is where changes break things, and duplicated code is where fixes go missing. AI coding agents make both more likely: they write code fast, and when they see only part of a codebase they tend to grow long, branching functions and to add a near-copy of a helper instead of reusing the one that exists. They do their best work on small, well-tested functions they can understand in one read, where the tests catch their mistakes. A check that runs on every commit gives agents and people the same immediate, objective feedback, instead of leaving it to a reviewer later.
 
-Uncle Bob's [crapper](https://github.com/unclebob/crapper) and [dryer](https://github.com/unclebob/dryer) had the right ideas: CRAP scores per function, and structural duplicate detection that ignores names and literals. They are Python tools that cover six languages, and by default crapper regenerates coverage on each run. GoDryCrap brings their rules for Go into a single standard-library Go binary built for that hook loop. On a private Go monorepo of 39,770 functions, `complexity` over the whole tree takes 1.48 s, against 32.3 s for `crapper --no-coverage`. On real staged diffs a hook run takes 39–94 ms for `complexity` and 0.3–1.1 s for `dupes`, and `crap` scores a coverage profile in 6–27 ms. See [docs/benchmarks.md](docs/benchmarks.md).
+### Complexity
 
-## Why DRY and CRAP matter
+A function with many branches is hard to read and hard to change: each path through it is another case to hold in mind, and another place a change can break something without anyone noticing.
 
-- **CRAP.** Complex code with little test coverage is where changes break things. Low complexity and good coverage keep each function easy to read, change and test.
-- **DRY.** When the same logic lives in several places, a fix lands in one copy and the bug lives on in the others. The codebase grows without getting more capable.
+`godrycrap complexity` measures this as cyclomatic complexity (CC): start at 1, and add 1 for each `if`, `for`, `range`, `case` clause (default included), `select` clause (default included), `&&` and `||`. Function literals count toward the enclosing function. It warns at CC 9 and fails at CC 10 or more (`-warn`, `-fail`). Each changed function is listed with its CC after the change and before it (`new` when there was no before). It exits 1 when something warns and 2 when something fails; see [Exit codes](#exit-codes).
 
-Both matter even more with AI coding agents. Agents write code fast. When they see only part of a codebase, they tend to add a near-copy of a helper instead of finding and reusing the one that exists, and to grow long, branching functions. They also work best on small, well-tested functions they can understand in one read, where the tests catch their mistakes. Uncle Bob relies on the same kind of gate for his own agents. He [writes](https://x.com/unclebobmartin/status/2108946115169030596) that "they are all _forced_ to thoroughly cover the code with unit tests. That enforcement comes from the crapper and mutator tools."
+```sh
+godrycrap complexity                     # staged diff, plain text for a hook
+godrycrap complexity -diff origin/main...HEAD -format markdown
+godrycrap complexity ./internal ./cmd     # paths: directories are walked recursively
+```
 
-A fast, automatic gate on every commit gives agents and people the same immediate, objective feedback, so problems don't wait for a reviewer to catch them later. That is why GoDryCrap runs as a pre-commit hook and scores only what changed.
+### CRAP
+
+Tests offset complexity. A test runs a path and pins down what it does, so a change that breaks the path fails the test instead of slipping through. CRAP (Change Risk Anti-Patterns) combines the two:
+
+```text
+CRAP = CC² × (1 − coverage)³ + CC
+```
+
+An untested function scores CC² + CC, so even CC 3 scores 12 and fails. At 100% coverage CRAP equals CC: tests make a function safe to change, but they cannot make 30 branches readable. `godrycrap crap` warns at CRAP 9 and fails at 10 or more (`-warn`, `-fail`), exiting 1 or 2 like `complexity`. A fail level of 10 is the target Uncle Bob [says he uses nowadays](https://x.com/unclebobmartin/status/2108946115169030596), much stricter than the original CRAP cut-off of 30. With the fail level at 10, a function needs more than this much coverage to pass:
+
+| CC | Coverage needed |
+| --- | --- |
+| 1–2 | none |
+| 3 | 8% |
+| 4 | 28% |
+| 5 | 42% |
+| 6 | 52% |
+| 7 | 61% |
+| 8 | 69% |
+| 9 | 77%, and it still warns |
+| 10 or more | cannot pass; split the function |
+
+Uncle Bob uses the same kind of gate on his own agents. He [writes](https://x.com/unclebobmartin/status/2108946115169030596) that "they are all _forced_ to thoroughly cover the code with unit tests. That enforcement comes from the crapper and mutator tools." Coverage shows that code ran, not that a test checked its result; mutation testing, which Uncle Bob's [mutator](https://github.com/unclebob/mutator) does, closes that gap. GoDryCrap does not do mutation testing.
+
+`crap` reads an existing `go test -coverprofile` profile and never runs tests:
+
+```sh
+godrycrap crap -coverprofile coverage.out
+godrycrap crap -coverprofile shard1.out -coverprofile shard2.out -diff origin/main...HEAD
+```
+
+The same shop example, with one test that covers part of `ShippingFee`:
+
+```
+$ godrycrap crap -coverprofile coverage.out ./price
+godrycrap v1.1.1 (go1.27.3)
+godrycrap crap: 3 functions, 2 fail, 0 warn
+status  crap    cc  coverage  function                            location
+fail    110     10  0%        example.com/shop/price.Discount     price/price.go:4
+ok      3.3333  3   66.6667%  example.com/shop/price.ShippingFee  price/price.go:28
+fail    12      3   0%        example.com/shop/price.ReturnFee    price/price.go:40
+```
+
+A function's coverage is the share of its statements, in profile blocks that overlap its lines, that ran at least once. A profile that cannot be trusted is an error (exit 3), never 0% coverage:
+
+- no `-coverprofile`, or a profile file that does not exist;
+- an empty profile (no blocks), a missing or unknown `mode:` header, or a malformed record: a non-positive or reversed span, a negative or overflowing count, trailing text, or the same span repeated with a different statement count;
+- a changed file the profile has no blocks for (wrong shard, or a profile of another module or package), empty functions included;
+- a profile that does not match the source being scored. GoDryCrap computes the blocks go cover would instrument in the current source (a port of cmd/cover's block rules from Go 1.27). Every profile block for the file must be one of them, with the same span and statement count, and each changed function must have exactly its computed blocks in the profile, no more and no fewer. This catches functions added, moved or edited after the profile was made, including a body that grew new branches while its first statement stayed put. Profiles must come from `go test` built with Go 1.27; an older toolchain splits blocks differently and is reported as a mismatch. An edit that keeps every block's span and statement count (renaming a variable to one of the same length, say) is not detected; see [docs/STATUS.md](docs/STATUS.md).
+
+`-profiled-only` scores only the changed files the profile covers, for per-shard CI runs. It is still an error when the profile covers none of them.
+
+### Duplicates
+
+When the same logic lives in several places, a fix lands in one copy and the bug lives on in the others, and the codebase grows without getting more capable.
+
+`godrycrap dupes` finds functions with nearly the same structure. Each function is normalized: call names, operators and the shape of the tree are kept, while local names, field names, type names in argument position and literals are dropped. Every subtree is fingerprinted, and two functions score the Jaccard similarity of their fingerprint sets (shared fingerprints over all fingerprints in either). Pairs at 0.8 or above are reported (`-threshold`); functions shorter than 4 lines (`-min-lines`) or 20 normalized nodes (`-min-nodes`) are skipped.
+
+```sh
+godrycrap dupes
+godrycrap dupes -threshold 0.9 ./pkg/foo
+```
+
+It is advisory: it exits 0 unless there is an error. Functions are compared only within their package (directory). In the staged and range modes each changed function is compared with every function in its package (as the after tree holds it). In path mode every function is compared with every other function in its package; packages are loaded and released one at a time, so memory is bounded by the largest package, not the tree.
 
 ## Install
 
@@ -55,46 +131,31 @@ Each command picks the functions to score in one of three ways:
 
 In the staged and range modes a function is scored when the diff touched it: it is new, its declaration text changed, or it moved to another file. A function's identity is its package, receiver type and name, so a renamed function is new (with no "before") and a function moved to another file in the same package keeps its history. A change that only deletes code has nothing to score and exits 0.
 
-### complexity
+### Pre-commit hook
+
+Save this as `.git/hooks/pre-commit` and make it executable. It blocks the commit when complexity fails (2) or errors (3); a warning (1) is shown but does not block. dupes always runs, and blocks only on an error (3). `cmd/godrycrap/readme_test.go` runs this exact script for every exit code.
 
 ```sh
-godrycrap complexity                     # staged diff, plain text for a hook
-godrycrap complexity -diff origin/main...HEAD -format markdown
-godrycrap complexity ./internal ./cmd     # paths: directories are walked recursively
-```
-
-Reports each changed function's CC after the change, and before it (`new` when there was no before). Warn at CC 9, fail at CC 10 or more (`-warn`, `-fail`).
-
-`-ratchet` (off by default): a function whose CC was already at the fail level before the change, and did not rise, warns instead of failing.
-
-### crap
-
-```sh
-godrycrap crap -coverprofile coverage.out
-godrycrap crap -coverprofile shard1.out -coverprofile shard2.out -diff origin/main...HEAD
-```
-
-CRAP = CC² × (1 − coverage)³ + CC, using an existing `go test -coverprofile` profile. It never runs tests. Warn at CRAP 9, fail at 10 (`-warn`, `-fail`).
-
-These are errors (exit 3), never 0% coverage:
-
-- no `-coverprofile`, or a profile file that does not exist;
-- an empty profile (no blocks), a missing or unknown `mode:` header, or a malformed record: a non-positive or reversed span, a negative or overflowing count, trailing text, or the same span repeated with a different statement count;
-- a changed file the profile has no blocks for (wrong shard, or a profile of another module or package), empty functions included;
-- a profile that does not match the source being scored. GoDryCrap computes the blocks go cover would instrument in the current source (a port of cmd/cover's block rules from Go 1.27). Every profile block for the file must be one of them, with the same span and statement count, and each changed function must have exactly its computed blocks in the profile, no more and no fewer. This catches functions added, moved or edited after the profile was made, including a body that grew new branches while its first statement stayed put. Profiles must come from `go test` built with Go 1.27; an older toolchain splits blocks differently and is reported as a mismatch. An edit that keeps every block's span and statement count (renaming a variable to one of the same length, say) is not detected; see [docs/STATUS.md](docs/STATUS.md).
-
-`-profiled-only` scores only the changed files the profile covers, for per-shard CI runs. It is still an error when the profile covers none of them.
-
-`-ratchet` (off by default): a failing function that already existed and whose CC did not rise warns instead of failing. Coverage before the change is not known, so the ratchet is on CC.
-
-### dupes
-
-```sh
+#!/bin/sh
+godrycrap complexity
+complexity=$?
 godrycrap dupes
-godrycrap dupes -threshold 0.9 ./pkg/foo
+dupes=$?
+if [ "$complexity" -ge 2 ]; then
+  exit "$complexity"
+fi
+exit "$dupes"
 ```
 
-Advisory: it always exits 0 unless there is an error. Functions are compared only within their package (directory). In the staged and range modes each changed function is compared with every function in its package (as the after tree holds it). In path mode every function is compared with every other function in its package; packages are loaded and released one at a time, so memory is bounded by the largest package, not the tree. Flags: `-threshold` (default 0.8), `-min-lines` (default 4), `-min-nodes` (default 20).
+### CI
+
+GitHub Actions, per coverage shard:
+
+```sh
+godrycrap crap -summary -profiled-only -coverprofile coverage.out -diff "origin/$GITHUB_BASE_REF...HEAD"
+```
+
+This repo's own workflow (`.github/workflows/ci.yml`) runs gofmt, go vet, staticcheck and the tests, then runs all three commands on GoDryCrap itself, using its own coverage.
 
 ### Shared flags
 
@@ -104,6 +165,10 @@ Advisory: it always exits 0 unless there is an error. Functions are compared onl
 | `-summary` | also append the Markdown to `$GITHUB_STEP_SUMMARY` when it is set |
 | `-diff BASE..HEAD` | score a commit range instead of the staged diff |
 | `-C dir` | run git in `dir` |
+
+### Ratchet
+
+All three commands score only what a change touches, so existing complex code never blocks an unrelated commit. A function that is already over the line still fails when it is edited. `-ratchet` (off by default) softens that: in `complexity`, a function whose CC was already at the fail level before the change, and did not rise, warns instead of failing. In `crap`, a failing function that already existed and whose CC did not rise warns instead of failing; coverage before the change is not known, so the crap ratchet is on CC.
 
 ### Version
 
@@ -132,29 +197,15 @@ Text and Markdown output start with that line. JSON output has `version` and `go
 
 A staged (or HEAD-side, in range mode) file that does not parse is an error. A before-side file that does not parse is treated as absent.
 
-## Hook and CI
+## How it stays fast
 
-Pre-commit hook (`.git/hooks/pre-commit`). It blocks the commit when complexity fails (2) or errors (3); a warning (1) is shown but does not block. dupes always runs, and blocks only on an error (3). `cmd/godrycrap/readme_test.go` runs this exact script for every exit code.
+A hook that takes more than a couple of seconds stops being run, so GoDryCrap was built for that loop:
 
-```sh
-#!/bin/sh
-godrycrap complexity
-complexity=$?
-godrycrap dupes
-dupes=$?
-if [ "$complexity" -ge 2 ]; then
-  exit "$complexity"
-fi
-exit "$dupes"
-```
+- **Changed functions only.** In the staged and range modes it reads only the files a diff touched (and, for `dupes`, the rest of their packages), and scores only the functions the diff changed.
+- **Existing coverage.** `crap` reads the profile a CI test job already writes instead of rerunning tests. That takes 6–27 ms per profile, including the check of every block.
+- **Strict profile checks.** Because tests are not rerun, a profile that is missing, malformed, from the wrong shard or older than the source is an error, not a silent 0% (see [CRAP](#crap)).
 
-GitHub Actions, per coverage shard:
-
-```sh
-godrycrap crap -summary -profiled-only -coverprofile coverage.out -diff "origin/$GITHUB_BASE_REF...HEAD"
-```
-
-This repo's own workflow (`.github/workflows/ci.yml`) runs gofmt, go vet, staticcheck and the tests, then runs all three commands on GoDryCrap itself, using its own coverage.
+On a private Go monorepo of 39,770 functions, `complexity` over the whole tree takes 1.48 s, against 32.3 s for `crapper --no-coverage`. On real staged diffs from that monorepo a hook run takes 39–94 ms for `complexity` and 0.3–1.1 s for `dupes`. Uncle Bob's crapper and dryer are Python tools that cover six languages, and by default crapper regenerates coverage on each run; GoDryCrap brings their rules for Go into one binary built for the hook. See [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Differences from crapper and dryer
 
