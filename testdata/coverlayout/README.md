@@ -1,0 +1,1 @@
+A module of cmd/cover edge cases and the profile go1.27.3 wrote for it (`go test -coverprofile=cover.out ./...`, with a test file that is not kept). `internal/coverlayout` must compute exactly these blocks.

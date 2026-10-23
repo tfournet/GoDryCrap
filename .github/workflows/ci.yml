@@ -1,0 +1,95 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.2 ./...
+
+      - name: go test
+        run: go test -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: build
+        id: build
+        run: go build -o godrycrap ./cmd/godrycrap
+
+      # godrycrap exits 0 (ok), 1 (warn), 2 (fail) or 3 (error). Each report
+      # passes on 0 and 1 and fails the job on 2 and 3, and every report runs
+      # even when an earlier one failed.
+
+      # Dogfood: GoDryCrap must pass its own bar on every function.
+      - name: complexity (all functions)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          status=0
+          ./godrycrap complexity -summary ./cmd ./internal || status=$?
+          [ "$status" -le 1 ] || exit "$status"
+
+      - name: crap (all functions, own coverage)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          status=0
+          ./godrycrap crap -summary -coverprofile coverage.out ./cmd ./internal || status=$?
+          [ "$status" -le 1 ] || exit "$status"
+
+      - name: dupes (advisory)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          status=0
+          ./godrycrap dupes -summary ./cmd ./internal || status=$?
+          [ "$status" -le 1 ] || exit "$status"
+
+      - name: complexity (changed in this pull request)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'pull_request' }}
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          status=0
+          ./godrycrap complexity -summary -diff "$BASE...HEAD" || status=$?
+          [ "$status" -le 1 ] || exit "$status"
+
+      - name: crap (changed in this pull request)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'pull_request' }}
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          status=0
+          ./godrycrap crap -summary -coverprofile coverage.out -diff "$BASE...HEAD" || status=$?
+          [ "$status" -le 1 ] || exit "$status"
+
+      - name: dupes (changed in this pull request)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'pull_request' }}
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          status=0
+          ./godrycrap dupes -summary -diff "$BASE...HEAD" || status=$?
+          [ "$status" -le 1 ] || exit "$status"

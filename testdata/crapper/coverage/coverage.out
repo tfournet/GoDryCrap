@@ -1,0 +1,13 @@
+mode: set
+github.com/acme/demo/internal/game/board.go:6.2,6.17 1 1
+github.com/acme/demo/internal/game/board.go:7.3,8.1 1 1
+github.com/acme/demo/sample/sample.go:4.2,4.21 1 1
+github.com/acme/demo/sample/sample.go:5.3,6.1 1 1
+github.com/acme/demo/sample/sample.go:7.2,7.11 1 1
+github.com/acme/demo/sample/sample.go:9.3,9.11 1 0
+github.com/acme/demo/sample/sample.go:11.3,11.11 1 1
+github.com/acme/demo/sample/widget.go:6.2,6.26 1 1
+github.com/acme/demo/sample/widget.go:6.27,6.27 0 1
+github.com/acme/demo/sample/widget.go:8.2,8.18 1 1
+github.com/acme/demo/sample/widget.go:8.19,8.19 0 0
+github.com/acme/demo/sample/widget.go:12.21,12.31 1 0

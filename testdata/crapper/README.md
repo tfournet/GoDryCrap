@@ -1,0 +1,3 @@
+Go cases from crapper's `tests/test_go.py`, with the same sources (0BSD). `internal/analysis/crapper_parity_test.go` and `cmd/godrycrap/crapper_parity_test.go` expect the same function names, namespaces and complexities that crapper's tests assert.
+
+`coverage/` is the same cases as a module that compiles, with the profile go1.27.3 wrote for it (`go test -coverprofile=coverage.out ./...`). Two changes make it compile: `vars.go` files declare the free variables (`items`, `ready`, `ok`), and in `widget.go`, `for _, item := range items {` became `for range items {`, which keeps the line layout and the complexity. `cmd/godrycrap/crapper_parity_test.go` expects crapper's own CRAP output on that profile.
